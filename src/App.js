@@ -1,24 +1,32 @@
-import logo from './logo.svg';
-import './App.css';
+import { useEffect, useMemo } from 'react';
+import { useLocalStorage } from './hooks/useLocalStorage';
+import { GlobalRouter } from './routes/GlobalRouter';
+import { ThemeContext } from './context/ThemeContext';
+import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 
 function App() {
+  const [theme, setTheme] = useLocalStorage('theme', 'light');
+
+  // Crear el tema de MUI según el valor almacenado
+  const muiTheme = useMemo(() => 
+    createTheme({
+      palette: {
+        mode: theme === 'dark' ? 'dark' : 'light',
+      },
+    }), [theme]);
+
+  // (Opcional) sincronizar con la clase del body si lo necesitas para otros estilos globales
+  useEffect(() => {
+    document.body.className = 'body--' + theme;
+  }, [theme]);
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <ThemeContext.Provider value={{ theme, setTheme }}>
+      <ThemeProvider theme={muiTheme}>
+        <CssBaseline />
+        <GlobalRouter />
+      </ThemeProvider>
+    </ThemeContext.Provider>
   );
 }
 
