@@ -39,7 +39,7 @@ const CustomInput = ({ label, initialValue, onChange, min = 0, max = Infinity, n
         endAdornment: (
           <InputAdornment position='end'>
             <Box display='flex' flexDirection='column' alignItems='right' mr={0}>
-              <IconButton size='small' onClick={incNumeric}>
+              <IconButton size='small' onClick={incNumeric} disabled={Number(value) === max}>
                 <ArrowDropUpIcon fontSize='small' />
               </IconButton>
               <IconButton size='small' onClick={decNumeric} disabled={Number(value) === min || value === ''}>
