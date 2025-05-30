@@ -47,7 +47,7 @@ const DiceInput = ({ label, initialValue, onChange }) => {
         : String(numericValue)
       onChange(value)
     }
-  }, [diceMode, numericValue, diceCount, sides, modifier, onChange])
+  }, [diceMode, numericValue, diceCount, sides, modifier])
 
   // toggle between numeric and dice modes
   const toggleMode = () => {

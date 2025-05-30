@@ -3,6 +3,8 @@ import { useLocalStorage } from './hooks/useLocalStorage'
 import { GlobalRouter } from './routes/GlobalRouter'
 import { ThemeContext } from './context/ThemeContext'
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material'
+import { AttackerProvider } from './context/AttackerContext'
+import { DefenderProvider } from './context/DefenderContext'
 
 function App () {
   const [theme, setTheme] = useLocalStorage('theme', 'dark')
@@ -15,16 +17,15 @@ function App () {
       }
     }), [theme])
 
-  // (Opcional) sincronizar con la clase del body si lo necesitas para otros estilos globales
-  useEffect(() => {
-    document.body.className = 'body--' + theme
-  }, [theme])
-
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>
       <ThemeProvider theme={muiTheme}>
-        <CssBaseline />
-        <GlobalRouter />
+        <AttackerProvider>
+          <DefenderProvider>
+            <CssBaseline />
+            <GlobalRouter />
+          </DefenderProvider>
+        </AttackerProvider>
       </ThemeProvider>
     </ThemeContext.Provider>
   )

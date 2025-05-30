@@ -4,7 +4,7 @@ import { TextField, InputAdornment, IconButton, Box } from '@mui/material'
 import ArrowDropUpIcon from '@mui/icons-material/ArrowDropUp'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
 
-const CustomInput = ({ label, initialValue, onChange, min = 0, negative = false }) => {
+const CustomInput = ({ label, initialValue, onChange, min = 0, max = Infinity, negative = false }) => {
   const [value, setValue] = useState(initialValue)
 
   const incNumeric = () => {
@@ -13,7 +13,7 @@ const CustomInput = ({ label, initialValue, onChange, min = 0, negative = false 
       onChange(min)
     } else {
       const numericValue = Number(value)
-      const newValue = String(numericValue + 1)
+      const newValue = numericValue < max ? String(numericValue + 1) : String(max)
       setValue(newValue)
       onChange(newValue)
     }
