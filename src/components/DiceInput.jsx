@@ -9,8 +9,9 @@ import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
  * Componente DiceInput: alterna entre modo numérico (>=1)
  * y modo 'dados' con dos controles: prefijo (D3→D6→2D6→3D6…) y sufijo (+X).
  * Props:
- * - initialValue: valor inicial (p.ej. '4', 'D3+2', 'D6+1', '2D6+3')
- * - onChange: callback que recibe el valor actual
+ * - label: etiqueta del TextField
+ * - initialValue: valor inicial (ej. '4', 'D3+2', '2D6+3')
+ * - onChange: callback que recibe el valor actual cuando el usuario lo modifica
  */
 const DiceInput = ({ label, initialValue, onChange }) => {
   const [diceMode, setDiceMode] = useState(false)
@@ -20,7 +21,7 @@ const DiceInput = ({ label, initialValue, onChange }) => {
   const [modifier, setModifier] = useState(0)
   const [width, setWidth] = useState('120')
 
-  // parse initialValue
+  // Parsear initialValue al montar o cuando cambie externamente
   useEffect(() => {
     const str = initialValue.toString()
     const diceMatch = str.match(/^(\d*)D(3|6)(?:\+(\d+))?$/)
@@ -29,67 +30,97 @@ const DiceInput = ({ label, initialValue, onChange }) => {
       setDiceCount(parseInt(diceMatch[1] || '1', 10))
       setSides(parseInt(diceMatch[2], 10))
       setModifier(parseInt(diceMatch[3] || '0', 10))
+      setNumericValue('')
+      setWidth('205')
     } else {
       const num = parseInt(str, 10)
       setDiceMode(false)
-      setNumericValue(isNaN(num) || num < 1 ? '' : num)
+      setNumericValue(!isNaN(num) && num >= 1 ? num : '')
       setDiceCount(1)
       setSides(3)
       setModifier(0)
+      setWidth('120')
     }
-  }, [initialValue])
-
-  // notify changes
-  useEffect(() => {
+    // Notificamos solo si initialValue cambia externamente
     if (onChange) {
-      const value = diceMode
-        ? `${diceCount > 1 ? diceCount : ''}D${sides}${modifier ? `+${modifier}` : ''}`
-        : String(numericValue)
-      onChange(value)
+      onChange(str)
     }
-  }, [diceMode, numericValue, diceCount, sides, modifier])
+  }, [initialValue, onChange])
 
-  // toggle between numeric and dice modes
-  const toggleMode = () => {
-    setWidth(!diceMode ? '205' : '120')
-    setDiceMode(m => !m)
+  // Helper para notificar cambios al padre
+  const notify = value => {
+    if (onChange) onChange(value)
   }
 
-  // numeric handlers
-  const incNumeric = () => setNumericValue(v => v + 1)
-  const decNumeric = () => setNumericValue(v => (v > 1 ? v - 1 : 1))
+  // Handlers: actualizan estado y notifican
+  const toggleMode = () => {
+    const newMode = !diceMode
+    setDiceMode(newMode)
+    const newWidth = newMode ? '205' : '120'
+    setWidth(newWidth)
+    const value = newMode
+      ? `${diceCount > 1 ? diceCount : ''}D${sides}${modifier ? `+${modifier}` : ''}`
+      : String(numericValue)
+    notify(value)
+  }
 
-  // dice prefix handlers (diceCount & sides)
+  const incNumeric = () => {
+    const next = numericValue === '' ? 1 : numericValue + 1
+    setNumericValue(next)
+    notify(String(next))
+  }
+  const decNumeric = () => {
+    const next = numericValue > 1 ? numericValue - 1 : 1
+    setNumericValue(next)
+    notify(String(next))
+  }
+
   const incPrefix = () => {
+    let nextCount = diceCount
+    let nextSides = sides
     if (sides === 3) {
-      setSides(6)
+      nextSides = 6
     } else {
-      setDiceCount(c => c + 1)
+      nextCount = diceCount + 1
     }
+    setSides(nextSides)
+    setDiceCount(nextCount)
+    notify(`${nextCount > 1 ? nextCount : ''}D${nextSides}${modifier ? `+${modifier}` : ''}`)
   }
   const decPrefix = () => {
+    let nextCount = diceCount
+    let nextSides = sides
     if (diceCount > 1) {
-      setDiceCount(c => c - 1)
+      nextCount = diceCount - 1
     } else if (sides === 6) {
-      setSides(3)
+      nextSides = 3
     }
+    setDiceCount(nextCount)
+    setSides(nextSides)
+    notify(`${nextCount > 1 ? nextCount : ''}D${nextSides}${modifier ? `+${modifier}` : ''}`)
   }
 
-  // dice suffix handlers (modifier)
-  const incModifier = () => setModifier(m => m + 1)
-  const decModifier = () => setModifier(m => (m > 0 ? m - 1 : 0))
+  const incModifier = () => {
+    const next = modifier + 1
+    setModifier(next)
+    notify(`${diceCount > 1 ? diceCount : ''}D${sides}+${next}`)
+  }
+  const decModifier = () => {
+    const next = modifier > 0 ? modifier - 1 : 0
+    setModifier(next)
+    notify(`${diceCount > 1 ? diceCount : ''}D${sides}${next ? `+${next}` : ''}`)
+  }
 
-  // displayed value
   const displayValue = diceMode
     ? `${diceCount > 1 ? diceCount : ''}D${sides}${modifier ? `+${modifier}` : ''}`
-    : !isNaN(numericValue) ? String(numericValue) : ''
+    : (numericValue !== '' ? String(numericValue) : '')
 
   return (
     <TextField
       label={label}
-      sx={{ width: width + 'px' }}
       variant='outlined'
       value={displayValue}
+      sx={{ width: { xs: '100%', sm: `${width}px` } }}
       InputProps={{
         readOnly: true,
         startAdornment: diceMode && (
@@ -106,26 +137,29 @@ const DiceInput = ({ label, initialValue, onChange }) => {
         ),
         endAdornment: (
           <InputAdornment position='end'>
-            {diceMode
-              ? (
-                <Box display='flex' flexDirection='column' alignItems='center' mr={1}>
-                  <IconButton size='small' onClick={incModifier}>
-                    <ArrowDropUpIcon fontSize='small' />
-                  </IconButton>
-                  <IconButton size='small' onClick={decModifier} disabled={!modifier}>
-                    <ArrowDropDownIcon fontSize='small' />
-                  </IconButton>
-                </Box>
-                )
-              : (
-                <Box display='flex' flexDirection='column' alignItems='center'>
-                  <IconButton size='small' onClick={incNumeric}>
-                    <ArrowDropUpIcon fontSize='small' />
-                  </IconButton>
-                  <IconButton size='small' onClick={decNumeric} disabled={numericValue === '' || numericValue === 1}>
-                    <ArrowDropDownIcon fontSize='small' />
-                  </IconButton>
-                </Box>)}
+            <Box display='flex' flexDirection='column' alignItems='center' mr={1}>
+              {diceMode
+                ? (
+                  <>
+                    <IconButton size='small' onClick={incModifier}>
+                      <ArrowDropUpIcon fontSize='small' />
+                    </IconButton>
+                    <IconButton size='small' onClick={decModifier} disabled={modifier === 0}>
+                      <ArrowDropDownIcon fontSize='small' />
+                    </IconButton>
+                  </>
+                  )
+                : (
+                  <>
+                    <IconButton size='small' onClick={incNumeric}>
+                      <ArrowDropUpIcon fontSize='small' />
+                    </IconButton>
+                    <IconButton size='small' onClick={decNumeric} disabled={numericValue === '' || numericValue === 1}>
+                      <ArrowDropDownIcon fontSize='small' />
+                    </IconButton>
+                  </>
+                  )}
+            </Box>
             <IconButton size='small' onClick={toggleMode} edge='end'>
               <CasinoIcon fontSize='small' />
             </IconButton>
@@ -137,11 +171,13 @@ const DiceInput = ({ label, initialValue, onChange }) => {
 }
 
 DiceInput.propTypes = {
+  label: PropTypes.string,
   initialValue: PropTypes.string,
   onChange: PropTypes.func
 }
 
 DiceInput.defaultProps = {
+  label: '',
   initialValue: '1',
   onChange: null
 }

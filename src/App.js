@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { GlobalRouter } from './routes/GlobalRouter'
 import { ThemeContext } from './context/ThemeContext'
