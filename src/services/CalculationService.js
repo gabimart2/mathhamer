@@ -89,23 +89,211 @@ function parseDefender (defender) {
   }
 }
 
-function calculateAnalytics (attacker, defender) {
-  return null
-}
-
-function calculateSimulation (attacker, defender, iterations = 100000) {
-  return null
-}
-
 function calculate (attacker, defender) {
   const parsedAttacker = parseAttacker(attacker)
   const parsedDefender = parseDefender(defender)
   console.log('Attacker: ', parsedAttacker)
   console.log('Defender: ', parsedDefender)
   return {
-    analytics: calculateAnalytics(parsedAttacker, parsedDefender),
-    simulation: calculateSimulation(parsedAttacker, parsedDefender, 100000)
+    analytics: computeAnalytical(parsedAttacker, parsedDefender),
+    simulation: simulateMonteCarlo(parsedAttacker, parsedDefender, 100000)
   }
+}
+
+function rollDice (count, sides, modifier = 0) {
+  let total = 0
+  for (let i = 0; i < count; i++) total += Math.floor(Math.random() * sides) + 1
+  return total + modifier
+}
+
+function computeEffectiveSave (defProfile, armorPen) {
+  const { save, invulnerableSave } = defProfile
+  const adjustedArmor = save + armorPen
+  const pArmor = adjustedArmor <= 6 ? (7 - adjustedArmor) / 6 : 0
+  const pInvul = invulnerableSave <= 6 ? (7 - invulnerableSave) / 6 : 0
+  const pSave = Math.max(pArmor, pInvul)
+  return { pSave, pFail: 1 - pSave }
+}
+
+function computeAnalytical (attacker, defender) {
+  const { numModels, profile } = attacker
+  const { attacks, skill, strength, armorPen, damage } = profile
+  const defProf = defender.profile
+  const { toughness, wounds, fellNoPain } = defProf
+
+  // Attacks
+  let muAtt = 0
+  let varAtt = 0
+  if (attacks.random) {
+    const { count, sides, modifier = 0 } = attacks.value
+    const muModel = count * (sides + 1) / 2 + modifier
+    const varModel = count * ((sides ** 2 - 1) / 12)
+    muAtt = muModel * numModels
+    varAtt = varModel * numModels
+  } else {
+    muAtt = attacks.value * numModels
+    varAtt = 0
+  }
+  const pHit = Math.max(0, Math.min(1, (7 - skill) / 6))
+
+  // Wounds
+  let woundTarget
+  if (strength >= 2 * toughness) woundTarget = 2
+  else if (strength > toughness) woundTarget = 3
+  else if (strength === toughness) woundTarget = 4
+  else if (strength * 2 <= toughness) woundTarget = 6
+  else woundTarget = 5
+  const pWound = (7 - woundTarget) / 6
+
+  // Saves
+  const { pFail: pFailSave } = computeEffectiveSave(defProf, armorPen)
+
+  // No hay dolor fail probability (damage passes)
+  const pFailFNP = fellNoPain <= 6 ? (fellNoPain - 1) / 6 : 1
+
+  // Analytical chain
+  const muH = muAtt * pHit
+  const varH = muAtt * pHit * (1 - pHit) + varAtt * pHit ** 2
+  const sigmaH = Math.sqrt(varH)
+
+  const muW = muH * pWound
+  const varW = pWound ** 2 * varH + pWound * (1 - pWound) * muH
+  const sigmaW = Math.sqrt(varW)
+
+  const muU = muW * pFailSave
+  const varU = pFailSave ** 2 * varW + pFailSave * (1 - pFailSave) * muW
+  const sigmaU = Math.sqrt(varU)
+
+  // Damage before FNP
+  let muDmg = 0
+  let varDmg = 0
+  if (damage.random) {
+    const { count, sides } = damage.value
+    muDmg = count * (sides + 1) / 2
+    varDmg = count * ((sides ** 2 - 1) / 12)
+  } else {
+    muDmg = damage.value
+    varDmg = 0
+  }
+  const muDmgTotal = muU * muDmg
+  const varDmgTotal = muU * varDmg + varU * muDmg ** 2
+  const sigmaDmgTotal = Math.sqrt(varDmgTotal)
+
+  // After FNP
+  const muAfterFNP = muDmgTotal * pFailFNP
+  const varAfterFNP =
+    muDmgTotal * pFailFNP * (1 - pFailFNP) + varDmgTotal * pFailFNP ** 2
+  const sigmaAfterFNP = Math.sqrt(varAfterFNP)
+
+  // Kills
+  const muKills = muAfterFNP / wounds
+  const sigmaKills = sigmaAfterFNP / wounds
+
+  return {
+    attacks: { mean: muAtt, sigma: Math.sqrt(varAtt) },
+    impacts: { mean: muH, sigma: sigmaH },
+    wounds: { mean: muW, sigma: sigmaW },
+    unsaved: { mean: muU, sigma: sigmaU },
+    damageBeforeFNP: { mean: muDmgTotal, sigma: sigmaDmgTotal },
+    damageAfterFNP: { mean: muAfterFNP, sigma: sigmaAfterFNP },
+    kills: { mean: muKills, sigma: sigmaKills }
+  }
+}
+
+function simulateMonteCarlo (attacker, defender, simRuns = 10000) {
+  const results = {
+    attacks: [],
+    impacts: [],
+    wounds: [],
+    unsaved: [],
+    damageBeforeFNP: [],
+    damageAfterFNP: [],
+    wasted: [],
+    kills: []
+  }
+  const { numModels, profile } = attacker
+  const { attacks, skill, strength, armorPen, damage } = profile
+  const defProf = defender.profile
+
+  const pHit = Math.max(0, Math.min(1, (7 - skill) / 6))
+  let woundTarget
+  if (strength >= 2 * defProf.toughness) woundTarget = 2
+  else if (strength > defProf.toughness) woundTarget = 3
+  else if (strength === defProf.toughness) woundTarget = 4
+  else if (strength * 2 <= defProf.toughness) woundTarget = 6
+  else woundTarget = 5
+  const pWound = (7 - woundTarget) / 6
+  const { pFail: pFailSave } = computeEffectiveSave(defProf, armorPen)
+  const pFailFNP = defProf.fellNoPain <= 6 ? (defProf.fellNoPain - 1) / 6 : 1
+
+  for (let i = 0; i < simRuns; i++) {
+    let totalAttacks = 0
+    if (attacks.random) {
+      for (let m = 0; m < numModels; m++) {
+        totalAttacks += rollDice(
+          attacks.value.count,
+          attacks.value.sides,
+          attacks.value.modifier || 0
+        )
+      }
+    } else {
+      totalAttacks = attacks.value * numModels
+    }
+
+    let hits = 0
+    let woundsCount = 0
+    let unsaved = 0
+    let dmgRoll = 0
+    let afterFNP = 0
+    let wasted = 0
+    let kills = 0
+    let remHP = defProf.wounds
+
+    for (let atk = 0; atk < totalAttacks; atk++) {
+      if (Math.random() > pHit) continue
+      hits++
+      if (Math.random() > pWound) continue
+      woundsCount++
+      if (Math.random() > pFailSave) continue
+      unsaved++
+      const roll = damage.random
+        ? rollDice(damage.value.count, damage.value.sides)
+        : damage.value
+      dmgRoll += roll
+      let passed = 0
+      for (let d = 0; d < roll; d++) {
+        if (Math.random() < pFailFNP) passed++
+      }
+      afterFNP += passed
+      if (passed > 0) {
+        if (passed >= remHP) {
+          wasted += passed - remHP
+          kills++
+          remHP = defProf.wounds
+        } else {
+          remHP -= passed
+        }
+      }
+    }
+
+    results.attacks.push(totalAttacks)
+    results.impacts.push(hits)
+    results.wounds.push(woundsCount)
+    results.unsaved.push(unsaved)
+    results.damageBeforeFNP.push(dmgRoll)
+    results.damageAfterFNP.push(afterFNP)
+    results.wasted.push(wasted)
+    results.kills.push(kills)
+  }
+
+  const summary = {}
+  for (const key in results) {
+    const arr = results[key]
+    const mean = arr.reduce((a, v) => a + v, 0) / arr.length
+    const varr = arr.reduce((a, v) => a + (v - mean) ** 2, 0) / arr.length
+    summary[key] = { mean, sigma: Math.sqrt(varr) }
+  }
+  return summary
 }
 
 const CalculationService = {
