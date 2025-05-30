@@ -41,10 +41,6 @@ const DiceInput = ({ label, initialValue, onChange }) => {
       setModifier(0)
       setWidth('120')
     }
-    // Notificamos solo si initialValue cambia externamente
-    if (onChange) {
-      onChange(str)
-    }
   }, [initialValue, onChange])
 
   // Helper para notificar cambios al padre

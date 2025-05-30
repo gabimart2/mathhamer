@@ -98,12 +98,13 @@ function calculateSimulation (attacker, defender, iterations = 100000) {
 }
 
 function calculate (attacker, defender) {
-  console.log('Attacker:', parseAttacker(attacker))
-  console.log('Defender:', parseDefender(defender))
-
+  const parsedAttacker = parseAttacker(attacker)
+  const parsedDefender = parseDefender(defender)
+  console.log('Attacker: ', parsedAttacker)
+  console.log('Defender: ', parsedDefender)
   return {
-    analytics: calculateAnalytics(attacker, defender),
-    simulation: calculateSimulation(attacker, defender, 100000)
+    analytics: calculateAnalytics(parsedAttacker, parsedDefender),
+    simulation: calculateSimulation(parsedAttacker, parsedDefender, 100000)
   }
 }
 
