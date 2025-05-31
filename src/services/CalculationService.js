@@ -115,10 +115,29 @@ function computeEffectiveSave (defProfile, armorPen) {
   return { pSave, pFail: 1 - pSave }
 }
 
+// Error function approximation
+function erf (x) {
+  const sign = x < 0 ? -1 : 1
+  x = Math.abs(x)
+  const a1 = 0.254829592
+  const a2 = -0.284496736
+  const a3 = 1.421413741
+  const a4 = -1.453152027
+  const a5 = 1.061405429
+  const p = 0.3275911
+  const t = 1 / (1 + p * x)
+  const y = 1 - ((((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t) * Math.exp(-x * x)
+  return sign * y
+}
+
+function phi (z) {
+  return 0.5 * (1 + erf(z / Math.sqrt(2)))
+}
+
 function computeAnalytical (attacker, defender) {
   const { numModels, profile } = attacker
   const { attacks, skill, strength, armorPen, damage } = profile
-  const defProf = defender.profile
+  const { numModels: defModels, profile: defProf } = defender
   const { toughness, wounds, fellNoPain } = defProf
 
   // Attacks
@@ -148,7 +167,7 @@ function computeAnalytical (attacker, defender) {
   // Saves
   const { pFail: pFailSave } = computeEffectiveSave(defProf, armorPen)
 
-  // No hay dolor fail probability (damage passes)
+  // FNP fail prob
   const pFailFNP = fellNoPain <= 6 ? (fellNoPain - 1) / 6 : 1
 
   // Analytical chain
@@ -189,6 +208,19 @@ function computeAnalytical (attacker, defender) {
   const muKills = muAfterFNP / wounds
   const sigmaKills = sigmaAfterFNP / wounds
 
+  // Distribution of kills (approx discrete normal)
+  const killsDistribution = {}
+  if (sigmaKills > 0) {
+    for (let k = 0; k <= defModels; k++) {
+      const lower = (k - 0.5 - muKills) / sigmaKills
+      const upper = (k + 0.5 - muKills) / sigmaKills
+      killsDistribution[k] = phi(upper) - phi(lower)
+    }
+  } else {
+    const k = Math.round(muKills)
+    killsDistribution[k] = 1
+  }
+
   return {
     attacks: { mean: muAtt, sigma: Math.sqrt(varAtt) },
     impacts: { mean: muH, sigma: sigmaH },
@@ -196,7 +228,8 @@ function computeAnalytical (attacker, defender) {
     unsaved: { mean: muU, sigma: sigmaU },
     damageBeforeFNP: { mean: muDmgTotal, sigma: sigmaDmgTotal },
     damageAfterFNP: { mean: muAfterFNP, sigma: sigmaAfterFNP },
-    kills: { mean: muKills, sigma: sigmaKills }
+    kills: { mean: muKills, sigma: sigmaKills },
+    killsDistribution
   }
 }
 
@@ -227,6 +260,7 @@ function simulateMonteCarlo (attacker, defender, simRuns = 10000) {
   const pFailFNP = defProf.fellNoPain <= 6 ? (defProf.fellNoPain - 1) / 6 : 1
 
   for (let i = 0; i < simRuns; i++) {
+    // Determine number of attacks
     let totalAttacks = 0
     if (attacks.random) {
       for (let m = 0; m < numModels; m++) {
@@ -266,12 +300,21 @@ function simulateMonteCarlo (attacker, defender, simRuns = 10000) {
       }
       afterFNP += passed
       if (passed > 0) {
-        if (passed >= remHP) {
-          wasted += passed - remHP
-          kills++
-          remHP = defProf.wounds
-        } else {
-          remHP -= passed
+        let dmgLeft = passed
+        // Apply damage across multiple models correctly
+        while (dmgLeft > 0 && kills < defender.numModels) {
+          if (dmgLeft >= remHP) {
+            dmgLeft -= remHP
+            kills++
+            remHP = defProf.wounds
+          } else {
+            remHP -= dmgLeft
+            dmgLeft = 0
+          }
+        }
+        // Any remaining damage after all models dead is wasted
+        if (dmgLeft > 0) {
+          wasted += dmgLeft
         }
       }
     }
@@ -293,8 +336,19 @@ function simulateMonteCarlo (attacker, defender, simRuns = 10000) {
     const varr = arr.reduce((a, v) => a + (v - mean) ** 2, 0) / arr.length
     summary[key] = { mean, sigma: Math.sqrt(varr) }
   }
+  // Empirical kills distribution
+  const dist = {}
+  for (let k = 0; k <= defender.numModels; k++) dist[k] = 0
+  results.kills.forEach(k => {
+    const capped = Math.min(k, defender.numModels)
+    dist[capped] = (dist[capped] || 0) + 1
+  })
+  for (const k in dist) dist[k] /= simRuns
+  summary.killsDistribution = dist
+
   return summary
 }
+
 
 const CalculationService = {
   calculate

@@ -7,12 +7,17 @@ import { CustomButton } from '../components/CustomButton'
 import CalculationService from '../services/CalculationService'
 import { useAttacker } from '../context/AttackerContext'
 import { useDefender } from '../context/DefenderContext'
+import { useLocalStorage } from '../hooks/useLocalStorage'
+import ResultsViewer from '../components/ResultsViewer'
 
 export const HomeView = () => {
   const { attacker } = useAttacker()
   const { defender } = useDefender()
+  const [results, setResults] = useLocalStorage(null)
+
   const calculateResults = () => {
     const result = CalculationService.calculate(attacker, defender)
+    setResults(result)
     console.log('Result: ', result)
   }
 
@@ -32,9 +37,7 @@ export const HomeView = () => {
           </Box>
         </Box>
       }
-      rightContent={
-        <Box />
-      }
+      rightContent={results ? (<ResultsViewer data={results} />) : (<></>)}
     />
   )
 }
